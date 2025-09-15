@@ -292,16 +292,17 @@ struct transfer_list_entry *transfer_list_next(struct transfer_list_header *tl,
 /*******************************************************************************
  * Calculate the byte sum (modulo 256) of a transfer list.
  * @tl: Pointer to the transfer list.
- * Return byte sum of the transfer list.
+ * Return byte-wise XOR of the transfer list.
  ******************************************************************************/
-static uint8_t calc_byte_sum(const struct transfer_list_header *tl)
+static uint8_t calc_byte_xor(const struct transfer_list_header *tl)
 {
 	uint8_t *b = (uint8_t *)tl;
 	uint8_t cs = 0;
 	size_t n = 0;
 
-	for (n = 0; n < tl->size; n++)
-		cs += b[n];
+	for (n = 0; n < tl->size; n++) {
+		cs ^= b[n];
+	}
 
 	return cs;
 }
@@ -313,15 +314,17 @@ static uint8_t calc_byte_sum(const struct transfer_list_header *tl)
  ******************************************************************************/
 void transfer_list_update_checksum(struct transfer_list_header *tl)
 {
-	uint8_t cs = 0;
-
-	if (!tl || !(tl->flags & TL_FLAGS_HAS_CHECKSUM))
+	if (!tl || !(tl->flags & TL_FLAGS_HAS_CHECKSUM)) {
 		return;
+	}
 
-	cs = calc_byte_sum(tl);
-	cs -= tl->checksum;
-	cs = 256 - cs;
-	tl->checksum = cs;
+	/*
+	 * Zeroing the checksum is necessary because  `calc_byte_xor` works on the
+	 * entire TL (including the checksum field).
+	 */
+	tl->checksum = 0;
+	tl->checksum = calc_byte_xor(tl);
+
 	assert(transfer_list_verify_checksum(tl));
 }
 
@@ -338,7 +341,7 @@ bool transfer_list_verify_checksum(const struct transfer_list_header *tl)
 	if (!(tl->flags & TL_FLAGS_HAS_CHECKSUM))
 		return true;
 
-	return !calc_byte_sum(tl);
+	return !calc_byte_xor(tl);
 }
 
 /*******************************************************************************
